@@ -28,10 +28,17 @@ app = FastAPI(title=APP_NAME, version="1.0.0", description="A retrieval-augmente
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # In-memory demo storage: documents are available only while this server process is running.
-embedder = SentenceTransformer(EMBEDDING_MODEL)
+embedder = None
 doc_chunks: List[Dict[str, Any]] = []
 faiss_index = None
-vector_dim = embedder.get_sentence_embedding_dimension()
+
+def get_embedder():
+    global embedder
+
+    if embedder is None:
+        embedder = SentenceTransformer(EMBEDDING_MODEL)
+
+    return embedder
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=2, max_length=1500)
@@ -80,7 +87,10 @@ def rebuild_index() -> None:
     if not doc_chunks:
         faiss_index = None
         return
-    vectors = embedder.encode([item["text"] for item in doc_chunks], normalize_embeddings=True)
+    vectors = get_embedder().encode(
+    [item["text"] for item in doc_chunks],
+    normalize_embeddings=True
+)
     vectors = np.asarray(vectors, dtype="float32")
     faiss_index = faiss.IndexFlatIP(vectors.shape[1])
     faiss_index.add(vectors)
@@ -134,7 +144,10 @@ def ask(request: AskRequest):
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise HTTPException(status_code=503, detail="Missing GROQ_API_KEY. Add your Groq API key to the environment variables.")
-    query_vector = embedder.encode([request.question], normalize_embeddings=True)
+    query_vector = get_embedder().encode(
+    [request.question],
+    normalize_embeddings=True
+)
     query_vector = np.asarray(query_vector, dtype="float32")
     k = min(TOP_K, len(doc_chunks))
     scores, indices = faiss_index.search(query_vector, k)
