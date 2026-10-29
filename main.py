@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 
 import numpy as np
 import faiss
+from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -25,8 +26,14 @@ CHUNK_OVERLAP = 150
 TOP_K = 4
 
 app = FastAPI(title=APP_NAME, version="1.0.0", description="A retrieval-augmented document question-answering app.")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
 
+app.mount(
+    "/static",
+    StaticFiles(directory=str(STATIC_DIR)),
+    name="static"
+)
 # In-memory demo storage: documents are available only while this server process is running.
 embedder = None
 doc_chunks: List[Dict[str, Any]] = []
@@ -84,23 +91,33 @@ def split_text(text: str) -> List[str]:
 
 def rebuild_index() -> None:
     global faiss_index
+
     if not doc_chunks:
         faiss_index = None
         return
+
     vectors = get_embedder().encode(
-    [item["text"] for item in doc_chunks],
-    normalize_embeddings=True
-)
+        [item["text"] for item in doc_chunks],
+        normalize_embeddings=True
+    )
+
     vectors = np.asarray(vectors, dtype="float32")
     faiss_index = faiss.IndexFlatIP(vectors.shape[1])
     faiss_index.add(vectors)
 
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse)
 def home():
-    with open("static/index.html", "r", encoding="utf-8") as f:
-        return f.read()
+    index_file = STATIC_DIR / "index.html"
 
+    if not index_file.exists():
+        raise HTTPException(
+            status_code=500,
+            detail="Homepage file not found."
+        )
+
+    return index_file.read_text(encoding="utf-8")
 @app.get("/api/health")
 def health():
     return {"status": "ok", "documents_chunks": len(doc_chunks), "llm_configured": bool(os.getenv("GROQ_API_KEY"))}
