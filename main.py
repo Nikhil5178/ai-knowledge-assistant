@@ -107,7 +107,6 @@ def rebuild_index() -> None:
 
 
 @app.get("/", response_class=HTMLResponse)
-@app.get("/", response_class=HTMLResponse)
 def home():
     index_file = STATIC_DIR / "index.html"
 
